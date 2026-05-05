@@ -5,14 +5,18 @@
 A producer and a consumer need to exchange small request/reply messages as quickly as possible. In many systems the default answer is TCP, even when both processes are running on the same machine.
 
 ```mermaid
-flowchart TD
+flowchart LR
     A((Producer process)) -->|1. Connect + send request| B[TCP loopback]
     B -->|2. Deliver bytes| C((Consumer process))
     C -->|3. Send response| B
     B -->|4. Deliver bytes| A
 ```
 
-TCP is a great general-purpose transport. It works across machines and behaves consistently with the rest of the networking stack. However, when both processes are co-located, TCP is also doing work that may not be useful for the problem. The message still goes through sockets, kernel networking paths, buffers, framing, connection handling, and wake-ups designed for communication between machines. If the only requirement is "process A and process B on the same host need to exchange messages", that extra work adds latency.
+TCP is a great general-purpose transport. It works across machines and behaves consistently with the rest of the networking stack. However, when both processes are co-located, TCP is also doing work that may not be useful for the problem.
+
+The message still goes through sockets, kernel networking paths, buffers, framing, connection handling, and wake-ups designed for communication between machines.
+
+If the only requirement is "process A and process B on the same host need to exchange messages", that extra work adds latency.
 
 ## What is shared memory?
 
@@ -134,34 +138,6 @@ Metrics were logged in five-second windows, so each window contains five request
 | Ring-buffer shared memory | 0.39 | 0.22 | 0.65 | ~4.2x lower RTT |
 
 The simple shared-memory channel cuts steady-state RTT substantially because it avoids the loopback network path. The ring buffer improves further by keeping the request and response paths in fixed shared slots and avoiding a mutex during normal reads and writes.
-
-### Sample metric windows
-
-Each row is one five-second metrics window. Each transport sent five requests per window.
-
-| Window | TCP avg RTT (ms) | Synchronized shared memory avg RTT (ms) | Ring-buffer shared memory avg RTT (ms) |
-| --: | --: | --: | --: |
-| 1 | 18.476 | 13.819 | 1.101 |
-| 2 | 1.891 | 0.693 | 0.483 |
-| 3 | 1.657 | 0.733 | 0.387 |
-| 4 | 1.720 | 0.558 | 0.417 |
-| 5 | 1.914 | 0.755 | 0.416 |
-| 6 | 1.412 | 0.627 | 0.315 |
-| 7 | 1.325 | 0.516 | 0.353 |
-| 8 | 1.408 | 0.577 | 0.361 |
-
-## Tradeoffs
-
-| Concern | Synchronized shared memory | Ring-buffer shared memory |
-| -- | -- | -- |
-| Complexity | Smallest shared-memory design; easy to inspect and debug. | More moving parts: sequence counters, fixed slots, memory barriers, and full/empty handling. |
-| Concurrency model | A lock serializes the full request/reply cycle. | Single-producer/single-consumer per ring pair; scale by sharding or adding more rings. |
-| Latency | Sub-millisecond steady-state RTT in the measured run, but still pays lock and per-request reply-channel costs. | Lowest RTT in the measured run; avoids the lock on the hot path and reuses fixed shared slots. |
-| Back-pressure | The lock naturally limits in-flight work to one request. | Bounded slots provide back-pressure when the writer catches the reader. |
-| CPU usage | Mostly waits on OS primitives. | Spinning can reduce latency but burn CPU under load. |
-| Payloads | Variable-sized frame up to the configured channel capacity. | Variable-sized frame up to the configured slot size; slot count and frame size must be chosen up front. |
-| Failure modes | Simpler state, but a stuck producer can hold the lock until timeout. | More state to recover/reset if one side exits while the other is active. |
-| Portability | Requires shared-memory and cross-process synchronization primitives. | Requires shared-memory and cross-process signalling primitives. |
 
 ## Limitations
 
