@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "Rockpal.Api": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ROLL_FORWARD": "LatestMinor"
+      },
+      "applicationUrl": "https://localhost:5001"
+    }
+  }
+}
